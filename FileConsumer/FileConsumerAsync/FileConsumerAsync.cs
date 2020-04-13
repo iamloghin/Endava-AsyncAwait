@@ -31,11 +31,6 @@ namespace FileConsumerAsync
             watcher.Changed += AddNewFileTask;
         }
 
-        private void AddNewFileTask(object sender, FileSystemEventArgs e)
-        {
-            filesInQueue.Enqueue(e.FullPath);
-        }
-
         public async Task<List<string>> StartAsync()
         {
             var token = TokenSource.Token;
@@ -47,7 +42,6 @@ namespace FileConsumerAsync
                 {
                     TokenSource.Cancel();
                     Console.WriteLine($"Cancellation token activated!", Console.ForegroundColor = ConsoleColor.Yellow);
-                    continue;
                 }
 
                 if (filesInQueue.Count != 0 && Semaphore > 0)
@@ -58,31 +52,32 @@ namespace FileConsumerAsync
                         Semaphore--;
                         file = filesInQueue.Dequeue();
                     }
-                    tasks.Add(Task.Run(() => ProcessFile(file), token));
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ProcessFile(file);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
+                        }
+                    }, token));
                 }
             }
 
-            try
-            {
-                await Task.WhenAll(tasks.ToArray());
-            }
-            catch (OperationCanceledException)
-            {
-                Console.WriteLine($"Your processFile tasks were canceled.", Console.ForegroundColor = ConsoleColor.Magenta);
-            }
+            await Task.WhenAll(tasks.ToArray());
             return filesConsumed;
         }
-
         private static async Task ProcessFile(string filesPath)
         {
-            Task.Delay(TimeSpan.FromSeconds(3)).Wait();
+            Task.Delay(TimeSpan.FromSeconds(new Random().Next(5))).Wait();
 
             var file = filesPath;
 
             if (TokenSource.Token.IsCancellationRequested)
             {
-                Console.WriteLine($"{processName}: Cancel requested for {Path.GetFileName(file)}");
-                return;
+                throw new OperationCanceledException($"{processName}: Cancel requested for {Path.GetFileName(file)}");
             }
 
             Console.WriteLine($"{processName}: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Red);
@@ -93,6 +88,11 @@ namespace FileConsumerAsync
             }
 
             TasksCount.Signal();
+        }
+
+        private void AddNewFileTask(object sender, FileSystemEventArgs e)
+        {
+            filesInQueue.Enqueue(e.FullPath);
         }
     }
 }

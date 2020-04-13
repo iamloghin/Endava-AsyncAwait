@@ -10,7 +10,7 @@ namespace FileConsumerAsync
         private static async Task Main()
         {
             var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
-            const int fileToGenerate = 15;
+            const int fileToGenerate = 25;
             const int fileToProcess = 10;
             const int tasksLimit = 4;
 
@@ -18,11 +18,12 @@ namespace FileConsumerAsync
 
             var mainWatcher = new FileConsumerAsync(filePath, fileToProcess, tasksLimit);
 
-            _ = Task.Run(() => FilesGenerator.GenerateFiles(filePath, fileToGenerate));
+            var fileGenerator = Task.Run(() => FilesGenerator.GenerateFiles(filePath, fileToGenerate));
 
             var files = await mainWatcher.StartAsync();
 
-            Console.WriteLine("Files processing complete:");
+            await Task.WhenAll(fileGenerator);
+            Console.WriteLine($"Files processing complete:", Console.ForegroundColor = ConsoleColor.Yellow);
             foreach (var file in files)
             {
                 Console.WriteLine($"\t{file}");

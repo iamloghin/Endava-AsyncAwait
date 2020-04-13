@@ -10,7 +10,7 @@ namespace FileGenerator
             {'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'z'};
         private static readonly char[] Vowel = { 'a', 'e', 'i', 'o', 'u', 'y' };
         private const int NrWordsOnEachFile = 1000;
-        private static object _lock = new object();
+        private static readonly object _lock = new object();
 
         public static void Delete(string filePath)
         {
@@ -32,7 +32,7 @@ namespace FileGenerator
                 {
                     var fileNo = i;
                     new Task(() => GenerateWords(filePath, fileNo), TaskCreationOptions.AttachedToParent).Start();
-                    Task.Delay(TimeSpan.FromMilliseconds(new Random().Next(2, 7) * 100)).Wait();
+                    Task.Delay(TimeSpan.FromMilliseconds(new Random().Next(2, 5) * 100)).Wait();
                 }
 
                 return $"FileGenerator: Generated {nrFiles} files.";
