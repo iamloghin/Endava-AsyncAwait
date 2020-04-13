@@ -31,17 +31,12 @@ namespace FileConsumerAsync
             watcher.Changed += AddNewFileTask;
         }
 
-        public async Task<List<string>> StartAsync()
-        {
-            return await Proceed();
-        }
-
         private void AddNewFileTask(object sender, FileSystemEventArgs e)
         {
             filesInQueue.Enqueue(e.FullPath);
         }
 
-        private async Task<List<string>> Proceed()
+        public async Task<List<string>> StartAsync()
         {
             var token = TokenSource.Token;
             var tasks = new List<Task>();
