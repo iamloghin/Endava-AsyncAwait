@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace FileConsumerThreads
 {
-    internal static class FileConsumerThread
+    internal class FileConsumerThread
     {
         private const string processName = "FileConsumerThread";
         private static volatile bool cancelToken;
@@ -15,7 +15,7 @@ namespace FileConsumerThreads
         private static SemaphoreSlim Semaphore;
         private static CountdownEvent ThreadsCount;
 
-        public static List<string> GetFiles()
+        public List<string> GetFiles()
         {
             Monitor.Enter(_lock);
                 var files = filesConsumed;
@@ -24,7 +24,7 @@ namespace FileConsumerThreads
             return files;
         }
 
-        public static Thread Start(string filePath, int fileToGenerate, int tasksLimit)
+        public Thread Start(string filePath, int fileToGenerate, int tasksLimit)
         {
             Initialize(filePath, fileToGenerate, tasksLimit);
             var mainWatcher = new Thread(Proceed);
@@ -33,7 +33,7 @@ namespace FileConsumerThreads
             return mainWatcher;
         }
 
-        private static void Initialize(string filePath, int fileToGenerate, int tasksLimit)
+        private void Initialize(string filePath, int fileToGenerate, int tasksLimit)
         {
             Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
             cancelToken = false;
@@ -49,12 +49,12 @@ namespace FileConsumerThreads
             watcher.Changed += AddNewFileTask;
         }
 
-        private static void AddNewFileTask(object sender, FileSystemEventArgs e)
+        private void AddNewFileTask(object sender, FileSystemEventArgs e)
         {
             filesInQueue.Enqueue(e.FullPath);
         }
 
-        private static void Proceed()
+        private void Proceed()
         {
             while (!cancelToken)
             {
@@ -65,9 +65,7 @@ namespace FileConsumerThreads
                     continue;
                 }
 
-                if (filesInQueue.Count.Equals(0)) continue;
-
-                if (Semaphore.CurrentCount > 0)
+                if (filesInQueue.Count != 0 && Semaphore.CurrentCount > 0)
                 {
                     Semaphore.Wait();
                     ThreadPool.QueueUserWorkItem(ProcessFile, filesInQueue.Dequeue());
@@ -75,10 +73,11 @@ namespace FileConsumerThreads
             }
         }
 
-        private static void ProcessFile(object filePath)
+        private void ProcessFile(object filePath)
         {
-            var file = filePath.ToString();
             Thread.Sleep(TimeSpan.FromSeconds(3));
+
+            var file = filePath.ToString();
 
             if (cancelToken)
             {
@@ -89,7 +88,7 @@ namespace FileConsumerThreads
             Console.WriteLine($"{processName}: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Red);
 
             Monitor.Enter(_lock);
-                filesConsumed.Add($"{Path.GetFileName(file)} - {Thread.CurrentThread.ManagedThreadId}");
+                filesConsumed.Add($"{Path.GetFileName(file)} - Thread id: {Thread.CurrentThread.ManagedThreadId}");
                 Semaphore.Release();
             Monitor.Exit(_lock);
 

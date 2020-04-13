@@ -15,10 +15,12 @@ namespace FileConsumerTask
             const int tasksLimit = 4;
 
             FilesGenerator.Delete(filePath);
-            var mainWatcher = FileConsumerTask.Start(filePath, fileToProcess, tasksLimit);
+
+            var mainWatcher = new FileConsumerTask();
+            var mainTask = mainWatcher.Start(filePath, fileToProcess, tasksLimit);
             Task.Run(() => FilesGenerator.GenerateFiles(filePath, fileToGenerate)).ConfigureAwait(false);
 
-            var files = mainWatcher.Result;
+            var files = mainTask.Result;
 
             Console.WriteLine("Files processing complete:");
             foreach (var file in files)

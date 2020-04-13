@@ -16,13 +16,14 @@ namespace FileConsumerThreads
 
             FilesGenerator.Delete(filePath);
 
-            var mainWatcher = FileConsumerThread.Start(filePath, fileToProcess, tasksLimit);
+            var mainWatcher = new FileConsumerThread();
+            var mainThread = mainWatcher.Start(filePath, fileToProcess, tasksLimit);
             new Thread(() => FilesGenerator.GenerateFiles(filePath, fileToGenerate)).Start();
-            
-            mainWatcher.Join();
 
+            mainThread.Join();
+            var files = mainWatcher.GetFiles();
             Console.WriteLine("Files processing complete:");
-            foreach (var file in FileConsumerThread.GetFiles())
+            foreach (var file in files)
             {
                 Console.WriteLine($"\t{file}");
             }

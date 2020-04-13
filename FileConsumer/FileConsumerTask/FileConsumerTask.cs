@@ -16,7 +16,7 @@ namespace FileConsumerTask
         private static int Semaphore;
         private static CountdownEvent TasksCount;
 
-        public static Task<List<string>> Start(string filePath, int fileToGenerate, int tasksLimit)
+        public Task<List<string>> Start(string filePath, int fileToGenerate, int tasksLimit)
         {
             Initialize(filePath, fileToGenerate, tasksLimit);
             var mainWatcher = Proceed();
@@ -25,7 +25,7 @@ namespace FileConsumerTask
             return mainWatcher;
         }
 
-        private static void Initialize(string filePath, int fileToGenerate, int tasksLimit)
+        private void Initialize(string filePath, int fileToGenerate, int tasksLimit)
         {
             Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
 
@@ -41,12 +41,12 @@ namespace FileConsumerTask
             watcher.Changed += AddNewFileTask;
         }
 
-        private static void AddNewFileTask(object sender, FileSystemEventArgs e)
+        private void AddNewFileTask(object sender, FileSystemEventArgs e)
         {
             filesInQueue.Enqueue(() => ProcessFile(e.FullPath));
         }
 
-        private static Task<List<string>> Proceed()
+        private Task<List<string>> Proceed()
         {
             return new Task<List<string>>(() =>
             {
@@ -61,9 +61,7 @@ namespace FileConsumerTask
                         continue;
                     }
 
-                    if (filesInQueue.Count.Equals(0)) continue;
-
-                    if (Semaphore > 0)
+                    if (filesInQueue.Count != 0 && Semaphore > 0)
                     {
                         lock (_lock) Semaphore--;
                         Task.Factory.StartNew(filesInQueue.Dequeue(), token, TaskCreationOptions.AttachedToParent, TaskScheduler.Default);
@@ -74,10 +72,11 @@ namespace FileConsumerTask
             }, TokenSource.Token);
         }
 
-        private static void ProcessFile(string filesPath)
+        private void ProcessFile(string filesPath)
         {
-            var file = filesPath;
             Task.Delay(TimeSpan.FromSeconds(3)).Wait();
+
+            var file = filesPath;
 
             if (TokenSource.Token.IsCancellationRequested)
             {
@@ -89,7 +88,7 @@ namespace FileConsumerTask
             lock (_lock)
             {
                 Semaphore++;
-                filesConsumed.Add($"{Path.GetFileName(file)} - {Thread.CurrentThread.ManagedThreadId}");
+                filesConsumed.Add($"{Path.GetFileName(file)} - Thread id: {Thread.CurrentThread.ManagedThreadId}");
             }
 
             TasksCount.Signal();
