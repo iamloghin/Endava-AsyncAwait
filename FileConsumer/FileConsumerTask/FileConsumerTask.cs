@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,7 +12,7 @@ namespace FileConsumerTask
         private const string processName = "FileConsumerTask";
         private static readonly CancellationTokenSource TokenSource = new CancellationTokenSource();
         private static readonly List<string> filesConsumed = new List<string>();
-        private static readonly Queue<Action> filesInQueue = new Queue<Action>();
+        private static readonly Queue<string> filesInQueue = new Queue<string>();
         private static readonly object _lock = new object();
         private static int Semaphore;
         private static CountdownEvent TasksCount;
@@ -43,7 +44,7 @@ namespace FileConsumerTask
 
         private void AddNewFileTask(object sender, FileSystemEventArgs e)
         {
-            filesInQueue.Enqueue(() => ProcessFile(e.FullPath));
+            filesInQueue.Enqueue(e.FullPath);
         }
 
         private Task<List<string>> Proceed()
@@ -63,8 +64,23 @@ namespace FileConsumerTask
 
                     if (filesInQueue.Count != 0 && Semaphore > 0)
                     {
-                        lock (_lock) Semaphore--;
-                        Task.Factory.StartNew(filesInQueue.Dequeue(), token, TaskCreationOptions.AttachedToParent, TaskScheduler.Default);
+                        string file;
+                        lock (_lock)
+                        {
+                            Semaphore--;
+                            file = filesInQueue.Dequeue();
+                        }
+                        Task.Factory.StartNew(() =>
+                        {
+                            try
+                            {
+                                ProcessFile(file);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
+                            }
+                        }, token, TaskCreationOptions.AttachedToParent, TaskScheduler.Default);
                     }
                 }
 
@@ -74,14 +90,13 @@ namespace FileConsumerTask
 
         private void ProcessFile(string filesPath)
         {
-            Task.Delay(TimeSpan.FromSeconds(3)).Wait();
+            Task.Delay(TimeSpan.FromSeconds(new Random().Next(1,3))).Wait();
 
             var file = filesPath;
 
             if (TokenSource.Token.IsCancellationRequested)
             {
-                Console.WriteLine($"{processName}: Cancel requested for {Path.GetFileName(file)}");
-                return;
+                throw new OperationCanceledException($"{processName}: Cancel requested for {Path.GetFileName(file)}");
             }
 
             Console.WriteLine($"{processName}: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Red);
