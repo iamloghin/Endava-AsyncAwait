@@ -15,13 +15,13 @@ namespace FileConsumerAsync
             const int tasksLimit = 4;
 
             var producer = new FilesGenerator(filePath);
-            var mainWatcher = new FileConsumerAsync(filePath, fileToProcess, tasksLimit);
-            var fileGenerator = Task.Run(() => producer.GenerateFiles(fileToGenerate));
+            var consumer = new FileConsumerAsync(filePath, fileToProcess, tasksLimit);
+            var fileProducer = Task.Run(() => producer.GenerateFiles(fileToGenerate));
 
-            var files = await mainWatcher.StartAsync();
-            await Task.WhenAll(fileGenerator);
+            var files = await consumer.StartAsync();
+            await Task.WhenAll(fileProducer);
             
-            Console.WriteLine($"Files processing complete:", Console.ForegroundColor = ConsoleColor.Yellow);
+            Console.WriteLine($"Files processing complete of {files.Count}:", Console.ForegroundColor = ConsoleColor.Yellow);
             foreach (var file in files)
             {
                 Console.WriteLine($"\t{file}");

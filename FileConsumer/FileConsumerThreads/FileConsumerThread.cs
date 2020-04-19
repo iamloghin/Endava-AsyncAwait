@@ -7,38 +7,19 @@ namespace FileConsumerThreads
 {
     internal class FileConsumerThread
     {
-        private const string processName = "FileConsumerThread";
-        private static volatile bool cancelToken;
-        private static readonly List<string> filesConsumed = new List<string>();
-        private static readonly Queue<string> filesInQueue = new Queue<string>();
-        private static readonly object _lock = new object();
-        private static SemaphoreSlim Semaphore;
-        private static CountdownEvent ThreadsCount;
+        private volatile bool cancelToken;
+        private readonly string processName;
+        private readonly List<string> filesConsumed = new List<string>();
+        private readonly Queue<string> filesInQueue = new Queue<string>();
+        private readonly SemaphoreSlim semaphore;
+        private readonly CountdownEvent threadsCount;
 
-        public List<string> GetFiles()
+        public FileConsumerThread(string filePath, int fileToGenerate, int tasksLimit)
         {
-            Monitor.Enter(_lock);
-                var files = filesConsumed;
-            Monitor.Exit(_lock);
-
-            return files;
-        }
-
-        public Thread Start(string filePath, int fileToGenerate, int tasksLimit)
-        {
-            Initialize(filePath, fileToGenerate, tasksLimit);
-            var mainWatcher = new Thread(Proceed);
-
-            mainWatcher.Start();
-            return mainWatcher;
-        }
-
-        private void Initialize(string filePath, int fileToGenerate, int tasksLimit)
-        {
-            Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
             cancelToken = false;
-            Semaphore = new SemaphoreSlim(tasksLimit);
-            ThreadsCount = new CountdownEvent(fileToGenerate);
+            processName = nameof(FileConsumerThread);
+            semaphore = new SemaphoreSlim(tasksLimit);
+            threadsCount = new CountdownEvent(fileToGenerate);
 
             var watcher = new FileSystemWatcher(filePath)
             {
@@ -46,38 +27,56 @@ namespace FileConsumerThreads
                 NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite,
                 EnableRaisingEvents = true
             };
-            watcher.Changed += AddNewFileTask;
+            watcher.Changed += (sender, e) =>
+            {
+                filesInQueue.Enqueue(e.FullPath);
+            };
+
+            Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
         }
 
-        private void AddNewFileTask(object sender, FileSystemEventArgs e)
+        public List<string> GetFiles()
         {
-            filesInQueue.Enqueue(e.FullPath);
+            Monitor.Enter(filesConsumed);
+                var files = filesConsumed;
+            Monitor.Exit(filesConsumed);
+
+            return files;
+        }
+
+        public Thread Start()
+        {
+            var mainWatcher = new Thread(Proceed);
+
+            mainWatcher.Start();
+
+            return mainWatcher;
         }
 
         private void Proceed()
         {
             while (!cancelToken)
             {
-                if (ThreadsCount.CurrentCount.Equals(0))
+                if (!threadsCount.CurrentCount.Equals(0))
+                {
+                    if (filesInQueue.Count != 0)
+                    {
+                        semaphore.Wait();
+                        ThreadPool.QueueUserWorkItem(ProcessFile, filesInQueue.Dequeue());
+                    }
+                }
+                else
                 {
                     cancelToken = true;
                     Console.WriteLine($"Cancellation token activated!", Console.ForegroundColor = ConsoleColor.Yellow);
-                    continue;
-                }
-
-                if (filesInQueue.Count != 0 && Semaphore.CurrentCount > 0)
-                {
-                    Semaphore.Wait();
-                    ThreadPool.QueueUserWorkItem(ProcessFile, filesInQueue.Dequeue());
                 }
             }
         }
 
         private void ProcessFile(object filePath)
         {
-            Thread.Sleep(TimeSpan.FromSeconds(3));
-
             var file = filePath.ToString();
+            Thread.Sleep(TimeSpan.FromMilliseconds(new Random().Next(500, 3000)));
 
             if (cancelToken)
             {
@@ -87,12 +86,11 @@ namespace FileConsumerThreads
 
             Console.WriteLine($"{processName}: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Red);
 
-            Monitor.Enter(_lock);
-                filesConsumed.Add($"{Path.GetFileName(file)} - Thread id: {Thread.CurrentThread.ManagedThreadId}");
-                Semaphore.Release();
-            Monitor.Exit(_lock);
-
-            ThreadsCount.Signal();
+            Monitor.Enter(filesConsumed);
+                filesConsumed.Add($"{Path.GetFileName(file)} - Thread no: {Thread.CurrentThread.ManagedThreadId}");
+                semaphore.Release();
+                threadsCount.Signal();
+            Monitor.Exit(filesConsumed);
         }
     }
 }

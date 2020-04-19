@@ -15,13 +15,14 @@ namespace FileConsumerThreads
             const int tasksLimit = 4;
 
             var producer = new FilesGenerator(filePath);
-            var mainWatcher = new FileConsumerThread();
-            var mainThread = mainWatcher.Start(filePath, fileToProcess, tasksLimit);
+            var consumer = new FileConsumerThread(filePath, fileToProcess, tasksLimit);
+            var consumerThread = consumer.Start();
             new Thread(() => producer.GenerateFiles(fileToGenerate)).Start();
 
-            mainThread.Join();
-            var files = mainWatcher.GetFiles();
-            Console.WriteLine("Files processing complete:");
+            consumerThread.Join();
+            var files = consumer.GetFiles();
+
+            Console.WriteLine($"Files processing complete of {files.Count}:");
             foreach (var file in files)
             {
                 Console.WriteLine($"\t{file}");

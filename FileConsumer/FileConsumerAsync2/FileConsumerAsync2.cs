@@ -10,12 +10,10 @@ namespace FileConsumerAsync2
     internal class FileConsumerAsync2
     {
         private readonly string processName;
-        private static readonly CancellationTokenSource TokenSource = new CancellationTokenSource();
         private readonly ConcurrentDictionary<string, string> dataConsumed;
         private readonly ConcurrentQueue<string> dataInQueue;
         private readonly SemaphoreSlim semaphore;
         private readonly CountdownEvent countdownEvent;
-        private CancellationTokenSource tokenSource;
 
         public FileConsumerAsync2(string filePath, int fileToConsume, int tasksLimit)
         {
@@ -41,16 +39,11 @@ namespace FileConsumerAsync2
             Console.WriteLine($"{processName}: I will process {fileToConsume} with max {tasksLimit} in parallel.");
         }
 
-        public ConcurrentDictionary<string, string> GetData()
-        {
-            return dataConsumed;
-        }
-
-        public async Task StartAsync()
+        public async Task<ConcurrentDictionary<string, string>> StartAsync(CancellationTokenSource token)
         {
             var tasks = new List<Task>();
 
-            while (!TokenSource.Token.IsCancellationRequested)
+            while (!token.Token.IsCancellationRequested)
             {
                 if (!countdownEvent.CurrentCount.Equals(0))
                 {
@@ -62,9 +55,9 @@ namespace FileConsumerAsync2
                         {
                             try
                             {
-                                ProcessFile(file);
+                                ProcessFile(file, token);
                             }
-                            catch (Exception ex)
+                            catch (OperationCanceledException ex)
                             {
                                 Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
                             }
@@ -73,24 +66,25 @@ namespace FileConsumerAsync2
                 }
                 else
                 {
-                    TokenSource.Cancel();
+                    token.Cancel();
                     Console.WriteLine($"Cancellation token activated!", Console.ForegroundColor = ConsoleColor.Yellow);
                 }
             }
 
             await Task.WhenAll(tasks.ToArray()).ConfigureAwait(false);
+            return dataConsumed;
         }
-        private void ProcessFile(string file)
+        private void ProcessFile(string file, CancellationTokenSource token)
         {
             Task.Delay(TimeSpan.FromMilliseconds(new Random().Next(500, 3000))).Wait();
 
-            if (TokenSource.Token.IsCancellationRequested)
+            if (token.Token.IsCancellationRequested)
             {
                 throw new OperationCanceledException($"{processName}: Cancel requested for {Path.GetFileName(file)}");
             }
 
             Console.WriteLine($"{processName}: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Red);
-            dataConsumed.TryAdd(Path.GetFileName(file), $"Thread no {Thread.CurrentThread.ManagedThreadId.ToString()}");
+            dataConsumed.TryAdd(Path.GetFileName(file), $"Thread no: {Thread.CurrentThread.ManagedThreadId}");
             semaphore.Release();
             countdownEvent.Signal();
         }

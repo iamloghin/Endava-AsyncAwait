@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace FileGenerator
@@ -11,7 +12,7 @@ namespace FileGenerator
         private readonly char[] Vowel = { 'a', 'e', 'i', 'o', 'u', 'y' };
         private readonly string filePath;
         private const int NrWordsOnEachFile = 10000;
-        private readonly object _lock = new object();
+        private int fileNo;
 
         public FilesGenerator(string path)
         {
@@ -26,15 +27,33 @@ namespace FileGenerator
             }
         }
 
+        public void GenerateFiles(CancellationToken token)
+        {
+            var parentTask = new Task<string>(() =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    Interlocked.Add(ref fileNo, 1);
+                    new Task(() => GenerateWords(filePath, fileNo), TaskCreationOptions.AttachedToParent).Start();
+                    Thread.Sleep(TimeSpan.FromMilliseconds(new Random().Next(2, 5) * 100));
+                }
+
+                return $"FileGenerator: Generated {fileNo} files.";
+            });
+
+            parentTask.Start();
+            Console.WriteLine(parentTask.Result, Console.ForegroundColor = ConsoleColor.Yellow);
+        }
+
         public void GenerateFiles(int nrFiles)
         {
             var parentTask = new Task<string>(() =>
             {
                 for (var i = 1; i <= nrFiles; i++)
                 {
-                    var fileNo = i;
-                    new Task(() => GenerateWords(filePath, fileNo), TaskCreationOptions.AttachedToParent).Start();
-                    Task.Delay(TimeSpan.FromMilliseconds(new Random().Next(2, 5) * 100)).Wait();
+                    var fileNumber = i;
+                    new Task(() => GenerateWords(filePath, fileNumber), TaskCreationOptions.AttachedToParent).Start();
+                    Thread.Sleep(TimeSpan.FromMilliseconds(new Random().Next(2, 5) * 100));
                 }
 
                 return $"FileGenerator: Generated {nrFiles} files.";
@@ -44,9 +63,9 @@ namespace FileGenerator
             Console.WriteLine(parentTask.Result, Console.ForegroundColor = ConsoleColor.Yellow);
         }
 
-        private void GenerateWords(string filePath, int fileNo)
+        private void GenerateWords(string fileLocation, int fileNumber)
         {
-            var file = $"{filePath}/file.{fileNo}.dat";
+            var file = $"{fileLocation}/file.{fileNumber}.dat";
 
             const long nrOfWords = NrWordsOnEachFile;
 
@@ -56,10 +75,10 @@ namespace FileGenerator
 
             for (var idx = 0; idx < nrOfWords; idx++) lines[idx] = GenerateWord(rand, rand.Next(1, 20));
 
-            lock (_lock)
+            Console.WriteLine($"FileGenerator: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Blue);
+            using (var outputFile = new StreamWriter(file))
             {
-                Console.WriteLine($"FileGenerator: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Blue);
-                using (var outputFile = new StreamWriter(file))
+                lock (outputFile)
                 {
                     foreach (var line in lines) outputFile.WriteLine(line);
                 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using FileGenerator;
 
@@ -9,19 +10,18 @@ namespace FileConsumerAsync2
     {
         private static async Task Main()
         {
-            var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
-            const int fileToGenerate = 25;
             const int fileToProcess = 10;
             const int tasksLimit = 4;
+            var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+            var tokenSource = new CancellationTokenSource();
 
             var producer = new FilesGenerator(filePath);
             var consumer = new FileConsumerAsync2(filePath, fileToProcess, tasksLimit);
-            var fileGenerator = Task.Run(() => producer.GenerateFiles(fileToGenerate));
+            var fileProducer = Task.Run(() => producer.GenerateFiles(tokenSource.Token), tokenSource.Token);
 
-            await consumer.StartAsync();
-            await fileGenerator;
+            var files = await consumer.StartAsync(tokenSource);
+            await fileProducer;
 
-            var files = consumer.GetData();
             Console.WriteLine($"Files processing complete of {files.Count}:", Console.ForegroundColor = ConsoleColor.Yellow);
             Parallel.ForEach(files, file =>
             {

@@ -8,29 +8,18 @@ namespace FileConsumerTask
 {
     internal class FileConsumerTask
     {
-        private const string processName = "FileConsumerTask";
-        private static readonly CancellationTokenSource TokenSource = new CancellationTokenSource();
-        private static readonly List<string> filesConsumed = new List<string>();
-        private static readonly Queue<string> filesInQueue = new Queue<string>();
-        private static readonly object _lock = new object();
-        private static int Semaphore;
-        private static CountdownEvent TasksCount;
+        private int Semaphore;
+        private readonly string processName;
+        private readonly CountdownEvent tasksCount;
+        private readonly CancellationTokenSource tokenSource = new CancellationTokenSource();
+        private readonly List<string> filesConsumed = new List<string>();
+        private readonly Queue<string> filesInQueue = new Queue<string>();
 
-        public Task<List<string>> Start(string filePath, int fileToGenerate, int tasksLimit)
+        public FileConsumerTask(string filePath, int fileToGenerate, int tasksLimit)
         {
-            Initialize(filePath, fileToGenerate, tasksLimit);
-            var mainWatcher = Proceed();
-
-            mainWatcher.Start();
-            return mainWatcher;
-        }
-
-        private void Initialize(string filePath, int fileToGenerate, int tasksLimit)
-        {
-            Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
-
             Semaphore = tasksLimit;
-            TasksCount = new CountdownEvent(fileToGenerate);
+            processName = nameof(FileConsumerTask);
+            tasksCount = new CountdownEvent(fileToGenerate);
 
             var watcher = new FileSystemWatcher(filePath)
             {
@@ -38,74 +27,79 @@ namespace FileConsumerTask
                 NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite,
                 EnableRaisingEvents = true
             };
-            watcher.Changed += AddNewFileTask;
+            watcher.Changed += (sender, e) =>
+            {
+                filesInQueue.Enqueue(e.FullPath);
+            };
+
+            Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
         }
 
-        private void AddNewFileTask(object sender, FileSystemEventArgs e)
+        public Task<List<string>> Start()
         {
-            filesInQueue.Enqueue(e.FullPath);
+            var consumerTask = Proceed();
+
+            consumerTask.Start();
+
+            return consumerTask;
         }
 
         private Task<List<string>> Proceed()
         {
             return new Task<List<string>>(() =>
             {
-                var token = TokenSource.Token;
-
-                while (!TokenSource.Token.IsCancellationRequested)
+                while (!tokenSource.Token.IsCancellationRequested)
                 {
-                    if (TasksCount.CurrentCount.Equals(0))
+                    if (!tasksCount.CurrentCount.Equals(0))
                     {
-                        TokenSource.Cancel();
-                        Console.WriteLine($"Cancellation token activated!", Console.ForegroundColor = ConsoleColor.Yellow);
-                        continue;
-                    }
-
-                    if (filesInQueue.Count != 0 && Semaphore > 0)
-                    {
-                        string file;
-                        lock (_lock)
+                        if (filesInQueue.Count != 0 && Semaphore > 0)
                         {
-                            Semaphore--;
-                            file = filesInQueue.Dequeue();
+                            string file;
+                            lock (filesInQueue)
+                            {
+                                Semaphore--;
+                                file = filesInQueue.Dequeue();
+                            }
+                            Task.Factory.StartNew(() =>
+                            {
+                                try
+                                {
+                                    ProcessFile(file);
+                                }
+                                catch (OperationCanceledException ex)
+                                {
+                                    Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
+                                }
+                            }, tokenSource.Token, TaskCreationOptions.AttachedToParent, TaskScheduler.Default);
                         }
-                        Task.Factory.StartNew(() =>
-                        {
-                            try
-                            {
-                                ProcessFile(file);
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
-                            }
-                        }, token, TaskCreationOptions.AttachedToParent, TaskScheduler.Default);
+                    }
+                    else
+                    {
+                        tokenSource.Cancel();
+                        Console.WriteLine($"Cancellation token activated!", Console.ForegroundColor = ConsoleColor.Yellow);
                     }
                 }
 
                 return filesConsumed;
-            }, TokenSource.Token);
+            }, tokenSource.Token);
         }
 
         private void ProcessFile(string filesPath)
         {
-            Task.Delay(TimeSpan.FromSeconds(new Random().Next(1,3))).Wait();
+            Task.Delay(TimeSpan.FromMilliseconds(new Random().Next(500, 3000))).Wait();
 
-            var file = filesPath;
-
-            if (TokenSource.Token.IsCancellationRequested)
+            if (tokenSource.Token.IsCancellationRequested)
             {
-                throw new OperationCanceledException($"{processName}: Cancel requested for {Path.GetFileName(file)}");
+                throw new OperationCanceledException($"{processName}: Cancel requested for {Path.GetFileName(filesPath)}");
             }
 
-            Console.WriteLine($"{processName}: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Red);
-            lock (_lock)
+            Console.WriteLine($"{processName}: {Path.GetFileName(filesPath)}", Console.ForegroundColor = ConsoleColor.Red);
+            lock (filesConsumed)
             {
                 Semaphore++;
-                filesConsumed.Add($"{Path.GetFileName(file)} - Thread id: {Thread.CurrentThread.ManagedThreadId}");
+                filesConsumed.Add($"{Path.GetFileName(filesPath)} - Thread no: {Thread.CurrentThread.ManagedThreadId}");
+                tasksCount.Signal();
             }
-
-            TasksCount.Signal();
         }
     }
 }

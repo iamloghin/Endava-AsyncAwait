@@ -8,32 +8,35 @@ namespace FileConsumerAsync
 {
     internal class FileConsumerAsync
     {
-        private const string processName = "FileConsumerAsync";
+        private int Semaphore;
+        private readonly string processName;
         private readonly CancellationTokenSource TokenSource = new CancellationTokenSource();
         private readonly List<string> filesConsumed = new List<string>();
         private readonly Queue<string> filesInQueue = new Queue<string>();
-        private int Semaphore;
         private readonly CountdownEvent TasksCount;
 
         public FileConsumerAsync(string filePath, int fileToGenerate, int tasksLimit)
         {
-            Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
-
             Semaphore = tasksLimit;
+            processName = nameof(FileConsumerAsync);
             TasksCount = new CountdownEvent(fileToGenerate);
 
-            var watcher = new FileSystemWatcher(filePath)
+            var fileWatcher = new FileSystemWatcher(filePath)
             {
                 IncludeSubdirectories = false,
                 NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite,
                 EnableRaisingEvents = true
             };
-            watcher.Changed += AddNewFileTask;
+            fileWatcher.Changed += (sender, e) =>
+            {
+                filesInQueue.Enqueue(e.FullPath);
+            };
+
+            Console.WriteLine($"{processName}: I will process {fileToGenerate} with max {tasksLimit} in parallel.");
         }
 
         public async Task<List<string>> StartAsync()
         {
-            var token = TokenSource.Token;
             var tasks = new List<Task>();
 
             while (!TokenSource.Token.IsCancellationRequested)
@@ -48,17 +51,17 @@ namespace FileConsumerAsync
                             Semaphore--;
                             file = filesInQueue.Dequeue();
                         }
-                        tasks.Add(Task.Run(async () =>
+                        tasks.Add(Task.Run(() =>
                         {
                             try
                             {
-                                await ProcessFile(file);
+                                ProcessFile(file);
                             }
-                            catch (Exception ex)
+                            catch (OperationCanceledException ex)
                             {
                                 Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
                             }
-                        }, token));
+                        }));
                     }
                 }
                 else
@@ -71,30 +74,22 @@ namespace FileConsumerAsync
             await Task.WhenAll(tasks.ToArray());
             return filesConsumed;
         }
-        private async Task ProcessFile(string filesPath)
+        private void ProcessFile(string filesPath)
         {
-            Task.Delay(TimeSpan.FromSeconds(new Random().Next(5))).Wait();
-
-            var file = filesPath;
+            Task.Delay(TimeSpan.FromMilliseconds(new Random().Next(500, 3000))).Wait();
 
             if (TokenSource.Token.IsCancellationRequested)
             {
-                throw new OperationCanceledException($"{processName}: Cancel requested for {Path.GetFileName(file)}");
+                throw new OperationCanceledException($"{processName}: Cancel requested for {Path.GetFileName(filesPath)}");
             }
 
-            Console.WriteLine($"{processName}: {Path.GetFileName(file)}", Console.ForegroundColor = ConsoleColor.Red);
+            Console.WriteLine($"{processName}: {Path.GetFileName(filesPath)}", Console.ForegroundColor = ConsoleColor.Red);
             lock (filesConsumed)
             {
                 Semaphore++;
-                filesConsumed.Add($"{Path.GetFileName(file)} - Thread id: {Thread.CurrentThread.ManagedThreadId}");
+                filesConsumed.Add($"{Path.GetFileName(filesPath)} - Thread no: {Thread.CurrentThread.ManagedThreadId}");
+                TasksCount.Signal();
             }
-
-            TasksCount.Signal();
-        }
-
-        private void AddNewFileTask(object sender, FileSystemEventArgs e)
-        {
-            filesInQueue.Enqueue(e.FullPath);
         }
     }
 }
