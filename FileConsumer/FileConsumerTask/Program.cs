@@ -14,11 +14,10 @@ namespace FileConsumerTask
             const int fileToProcess = 10;
             const int tasksLimit = 4;
 
-            FilesGenerator.Delete(filePath);
-
+            var producer = new FilesGenerator(filePath);
             var mainWatcher = new FileConsumerTask();
             var mainTask = mainWatcher.Start(filePath, fileToProcess, tasksLimit);
-            var fileGenerator = Task.Run(() => FilesGenerator.GenerateFiles(filePath, fileToGenerate)).ConfigureAwait(false);
+            var fileGenerator = Task.Run(() => producer.GenerateFiles(fileToGenerate)).ConfigureAwait(false);
 
             var files = mainTask.Result;
             fileGenerator.GetAwaiter().GetResult();

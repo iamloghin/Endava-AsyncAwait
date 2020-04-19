@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using FileGenerator;
 
-namespace FileConsumerAsync
+namespace FileConsumerAsync2
 {
     internal class Program
     {
@@ -15,17 +15,18 @@ namespace FileConsumerAsync
             const int tasksLimit = 4;
 
             var producer = new FilesGenerator(filePath);
-            var mainWatcher = new FileConsumerAsync(filePath, fileToProcess, tasksLimit);
+            var consumer = new FileConsumerAsync2(filePath, fileToProcess, tasksLimit);
             var fileGenerator = Task.Run(() => producer.GenerateFiles(fileToGenerate));
 
-            var files = await mainWatcher.StartAsync();
-            await Task.WhenAll(fileGenerator);
-            
-            Console.WriteLine($"Files processing complete:", Console.ForegroundColor = ConsoleColor.Yellow);
-            foreach (var file in files)
+            await consumer.StartAsync();
+            await fileGenerator;
+
+            var files = consumer.GetData();
+            Console.WriteLine($"Files processing complete of {files.Count}:", Console.ForegroundColor = ConsoleColor.Yellow);
+            Parallel.ForEach(files, file =>
             {
-                Console.WriteLine($"\t{file}");
-            }
+                Console.WriteLine($"\t{file.Key} - {file.Value}");
+            });
             Console.WriteLine("End.");
             Console.ReadLine();
         }

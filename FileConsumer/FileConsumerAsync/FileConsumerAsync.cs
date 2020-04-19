@@ -9,11 +9,11 @@ namespace FileConsumerAsync
     internal class FileConsumerAsync
     {
         private const string processName = "FileConsumerAsync";
-        private static readonly CancellationTokenSource TokenSource = new CancellationTokenSource();
-        private static readonly List<string> filesConsumed = new List<string>();
-        private static readonly Queue<string> filesInQueue = new Queue<string>();
-        private static int Semaphore;
-        private static CountdownEvent TasksCount;
+        private readonly CancellationTokenSource TokenSource = new CancellationTokenSource();
+        private readonly List<string> filesConsumed = new List<string>();
+        private readonly Queue<string> filesInQueue = new Queue<string>();
+        private int Semaphore;
+        private readonly CountdownEvent TasksCount;
 
         public FileConsumerAsync(string filePath, int fileToGenerate, int tasksLimit)
         {
@@ -38,38 +38,40 @@ namespace FileConsumerAsync
 
             while (!TokenSource.Token.IsCancellationRequested)
             {
-                if (TasksCount.CurrentCount.Equals(0))
+                if (!TasksCount.CurrentCount.Equals(0))
+                {
+                    if (filesInQueue.Count != 0 && Semaphore > 0)
+                    {
+                        string file;
+                        lock (filesInQueue)
+                        {
+                            Semaphore--;
+                            file = filesInQueue.Dequeue();
+                        }
+                        tasks.Add(Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await ProcessFile(file);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
+                            }
+                        }, token));
+                    }
+                }
+                else
                 {
                     TokenSource.Cancel();
                     Console.WriteLine($"Cancellation token activated!", Console.ForegroundColor = ConsoleColor.Yellow);
-                }
-
-                if (filesInQueue.Count != 0 && Semaphore > 0)
-                {
-                    string file;
-                    lock (filesInQueue)
-                    {
-                        Semaphore--;
-                        file = filesInQueue.Dequeue();
-                    }
-                    tasks.Add(Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await ProcessFile(file);
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"{ex.Message}", Console.ForegroundColor = ConsoleColor.Magenta);
-                        }
-                    }, token));
                 }
             }
 
             await Task.WhenAll(tasks.ToArray());
             return filesConsumed;
         }
-        private static async Task ProcessFile(string filesPath)
+        private async Task ProcessFile(string filesPath)
         {
             Task.Delay(TimeSpan.FromSeconds(new Random().Next(5))).Wait();
 

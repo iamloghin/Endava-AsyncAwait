@@ -6,14 +6,16 @@ namespace FileGenerator
 {
     public class FilesGenerator
     {
-        private static readonly char[] Cons =
+        private readonly char[] Cons =
             {'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'z'};
-        private static readonly char[] Vowel = { 'a', 'e', 'i', 'o', 'u', 'y' };
-        private const int NrWordsOnEachFile = 1000;
-        private static readonly object _lock = new object();
+        private readonly char[] Vowel = { 'a', 'e', 'i', 'o', 'u', 'y' };
+        private readonly string filePath;
+        private const int NrWordsOnEachFile = 10000;
+        private readonly object _lock = new object();
 
-        public static void Delete(string filePath)
+        public FilesGenerator(string path)
         {
+            filePath = path;
             var di = new DirectoryInfo(filePath);
             if (di.Exists)
             {
@@ -24,7 +26,7 @@ namespace FileGenerator
             }
         }
 
-        public static void GenerateFiles(string filePath, int nrFiles)
+        public void GenerateFiles(int nrFiles)
         {
             var parentTask = new Task<string>(() =>
             {
@@ -42,7 +44,7 @@ namespace FileGenerator
             Console.WriteLine(parentTask.Result, Console.ForegroundColor = ConsoleColor.Yellow);
         }
 
-        private static void GenerateWords(string filePath, int fileNo)
+        private void GenerateWords(string filePath, int fileNo)
         {
             var file = $"{filePath}/file.{fileNo}.dat";
 
@@ -64,7 +66,7 @@ namespace FileGenerator
             }
         }
 
-        private static string GenerateWord(Random rand, int length)
+        private string GenerateWord(Random rand, int length)
         {
             if (length < 1) // do not allow words of zero length
                 throw new ArgumentException("Length must be greater than 0");

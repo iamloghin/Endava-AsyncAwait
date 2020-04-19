@@ -14,11 +14,10 @@ namespace FileConsumerThreads
             const int fileToProcess = 10;
             const int tasksLimit = 4;
 
-            FilesGenerator.Delete(filePath);
-
+            var producer = new FilesGenerator(filePath);
             var mainWatcher = new FileConsumerThread();
             var mainThread = mainWatcher.Start(filePath, fileToProcess, tasksLimit);
-            new Thread(() => FilesGenerator.GenerateFiles(filePath, fileToGenerate)).Start();
+            new Thread(() => producer.GenerateFiles(fileToGenerate)).Start();
 
             mainThread.Join();
             var files = mainWatcher.GetFiles();
